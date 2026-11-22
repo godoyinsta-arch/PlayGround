@@ -53,14 +53,22 @@ function modesHit(mx,my){const ys=[330,394,458,522];for(let i=0;i<4;i++)if(mx>=1
 function select(){ctx.fillStyle='#11121d';ctx.fillRect(0,0,W,H);bg();box(70,40,1140,640,18,'#10101bce','#ffffff18');text(pickSide===0?'JOGADOR 1':'JOGADOR 2',640,84,14,pickSide===0?'#65d8db':'#ffb768','center','DM Sans',800);text('ESCOLHA SEU LUTADOR',640,120,38,'#fff','center');
  C.forEach((c,i)=>portrait(i,115+i*218,180,180,310,i===selected[pickSide]));text(pickSide===0?'P1: WASD + J/K/I/L/U':'P2: SETAS + 1/2/3/4/5',640,526,11,'#b7b2bc','center','DM Sans',700);text(C[selected[pickSide]].bio,640,563,12,'#ddd7cd','center','DM Sans',600);button(520,590,240,48,'CONFIRMAR LUTADOR',true);vignette();}
 function makeFighter(i,x,side){return{id:i,x,y:G,vx:0,vy:0,hp:100,energy:0,guard:false,attack:0,hit:0,dead:false,side,facing:side===0?1:-1,ultReady:false}}
+function arcadeStart(){return (selected[0]+1)%C.length}
 function startFight(){fighters=[makeFighter(selected[0],250,0),makeFighter(selected[1],1030,1)];shots=[];particles=[];wins=[0,0];round=1;timer=99;roundState='intro';intro=1.8;winner=-1;combos=[0,0];comboT=[0,0];survival=mode==='survival'?1:0;if(mode==='arcade')arcade=[(selected[0]+1)%5,(selected[0]+2)%5,(selected[0]+3)%5];screen='fight';notify('ROUND '+round)}
 function startRound(){fighters.forEach((f,i)=>{f.x=i===0?250:1030;f.y=G;f.vx=0;f.vy=0;f.hp=100;f.guard=false;f.attack=0;f.hit=0;f.dead=false});shots=[];timer=99;roundState='intro';intro=1.8;winner=-1}
-function attack(f,i,type){if(roundState!== 'fight'||f.hit>0||f.attack>0)return;f.attack=type==='ult'?28:type==='special'?18:12;if(type==='ult'&&f.energy>=100){f.energy=0;f.ultReady=true}else if(type==='special')f.energy=Math.min(100,f.energy+8);else f.energy=Math.min(100,f.energy+4);
- if(type==='light'||type==='special'||type==='ult'){} }
+function attack(f,i,type){
+ if(roundState!== 'fight'||f.hit>0||f.attack>0)return;
+ if(type==='ult'&&f.energy<100)return;
+ f.attack=type==='ult'?28:type==='special'?18:12;
+ if(type==='ult'){f.energy=0;f.ultReady=true;flash=18;shake=14;
+  let other=fighters[1-i];if(Math.abs(other.x-f.x)<240)damage(f,i,26,14);spawnHit(f.x+f.facing*95,f.y-115,C[f.id].ult,'#fff4a5');
+ }else if(type==='special'){f.energy=Math.min(100,f.energy+10);spawnShot(f,i,type);
+ }else f.energy=Math.min(100,f.energy+5);
+}
 function special(f,i,type){if(type==='ult')attack(f,i,'ult');else attack(f,i,'special')}
 function damage(a,d,amount,force=0){let b=fighters[1-d],blocked=b.guard&&b.facing!==a.facing;if(b.hp<=0)return;let dmg=blocked?Math.ceil(amount*.18):amount;b.hp=clamp(b.hp-dmg,0,100);b.hit=blocked?5:13;a.energy=clamp(a.energy+(blocked?4:9),0,100);b.vx=(b.x>a.x?-1:1)*force*(blocked?.3:1);b.y=G;comboT[d]=1.2;combos[d]++;if(dmg>0)spawnHit((b.x+a.x)/2,b.y-65,dmg,b.guard? '#77dbe2':'#ffcf70');shake=blocked?3:8;flash=5}
 function spawnHit(x,y,n,c){particles.push({x,y,vx:rand(-2,2),vy:rand(-4,-1),life:18,text:n+'!',c})}
-function shotsCollision(){for(let s of shots){let f=fighters[1-s.owner];if(Math.abs(s.x-f.x)<48&&f.y>500){damage(fighters[s.owner],1-s.owner,s.dmg,s.force);s.life=0}}shots=shots.filter(s=>s.life>0)}
+function shotsCollision(){for(let s of shots){let owner=s.owner,target=1-owner,f=fighters[target];if(Math.abs(s.x-f.x)<48&&f.y>500){damage(fighters[owner],target,s.dmg,s.force);s.life=0}}shots=shots.filter(s=>s.life>0)}
 function physics(dt){if(paused||roundState==='over'||roundState==='result')return;
  if(roundState==='intro'){intro-=dt;if(intro<=0){roundState='fight';notify('FIGHT')}}if(roundState==='fight')timer-=dt*.025;
  fighters.forEach((f,i)=>{f.facing=fighters[1-i].x<f.x?-1:1;if(f.attack>0)f.attack--;if(f.hit>0)f.hit--;f.guard=false;
@@ -69,13 +77,23 @@ function physics(dt){if(paused||roundState==='over'||roundState==='result')retur
   else if(mode==='training'){f.guard=false;if(f.hit<=0){if(Math.random()<.006)attack(f,i,'light')}}
   else{let opponent=fighters[1-i],dist=opponent.x-f.x;if(Math.abs(dist)>75){f.vx=Math.sign(dist)*(Math.random()<.012?4:3)}else f.vx*=.75;if(Math.random()<.012&&Math.abs(dist)<110)attack(f,i,'light');if(Math.random()<.004)attack(f,i,'special');f.guard=Math.abs(dist)<75&&Math.random()<.02}
   f.vy+=.6;f.x=clamp(f.x+f.vx,55,1225);f.y=clamp(f.y+f.vy,220,G);if(f.y>=G)f.vy=0;
-  if(f.attack===10||f.attack===16){let dist=Math.abs(f.x-fighters[1-i].x);if(dist<80&&!fighters[1-i].guard)damage(f,i,f.attack===16?18:8,5);else if(dist<80)damage(f,i,8,2)}});
+  if(f.attack===10||f.attack===16){let dist=Math.abs(f.x-fighters[1-i].x);if(dist<80&&!fighters[1-i].guard)damage(f,i,f.attack===16?18:8,5);else if(dist<80)damage(f,i,f.attack===16?4:2,2)}});
  if(fighters[0].hp<=0||fighters[1].hp<=0||timer<=0)finish();
  shots.forEach(s=>{s.x+=s.vx;s.life--});shotsCollision();shots=shots.filter(s=>s.life>0);
  comboT.forEach((v,i)=>{comboT[i]-=dt;if(comboT[i]<=0)combos[i]=0});particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life--});particles=particles.filter(p=>p.life>0);Object.keys(pressed).forEach(k=>delete pressed[k]);}
 function spawnShot(f,i,type){shots.push({x:f.x+f.facing*55,y:f.y-62,vx:f.facing*(type==='ult'?9:6),life:90,owner:i,dmg:type==='ult'?24:13,force:8,c:C[f.id].color})}
-function damage(a,d,amount,force=0){let b=fighters[d],blocked=b.guard&&!b.dead;if(b.hp<=0)return;let dmg=blocked?Math.ceil(amount*.18):amount;b.hp=clamp(b.hp-dmg,0,100);b.hit=blocked?5:13;a.energy=clamp(a.energy+(blocked?4:9),0,100);b.vx=(b.x>a.x?-1:1)*force*(blocked?.3:1);spawnHit(b.x,b.y-90,dmg,blocked?'#77dbe2':'#ffcf70');shake=blocked?3:8;flash=5}
-function finish(){if(roundState==='over'||roundState==='result')return;let a=fighters[0].hp,b=fighters[1].hp,w=a>b?0:(b>a?1:-1);if(w>=0)wins[w]++;winner=w;roundState='over';setTimeout(()=>{if(wins[w]>=2||mode==='training'||mode==='survival'&&survival>10){roundState='result'}else{round++;startRound()}},2200)}
+// O dano principal é definido pela função anterior; este alias não é necessário.
+function finish(){
+ if(roundState==='over'||roundState==='result')return;
+ let a=fighters[0].hp,b=fighters[1].hp,w=a>b?0:(b>a?1:-1);
+ if(w>=0)wins[w]++;winner=w;roundState='over';
+ setTimeout(()=>{
+  if(mode==='arcade'&&w===0&&arcade.length){let id=arcade.shift();selected[1]=id;fighters[1]=makeFighter(id,1030,1);round++;startRound();notify('NOVO DESAFIO: '+C[id].name)}
+  else if(mode==='survival'&&w===0){survival++;let id=(selected[1]+survival)%5;selected[1]=id;fighters[1]=makeFighter(id,1030,1);fighters[1].hp=Math.max(55,100-survival*5);round++;wins=[0,0];startRound();notify('ONDA '+survival+' • '+C[id].name)}
+  else if(wins[w]>=2||mode==='training'||(mode==='survival'&&w===1)||(mode==='arcade'&&w===1)){roundState='result'}
+  else{round++;startRound()}
+ },2200)
+}
 function hud(){for(let i=0;i<2;i++){let f=fighters[i],x=i===0?55:725,w=500;box(x,45,w,22,11,'#171823','#fff3');let fill=w*f.hp/100;box(i===0?x:x+w-fill,45,fill,22,11,i===0?'#e98e72':'#67d3ca');text(C[f.id].name,i===0?x:x+w,84,24,'#fff',i===0?'left':'right');for(let n=0;n<2;n++)box(i===0?x+n*18:x+w-(n+1)*18,105,12,12,6,n<wins[i]?C[f.id].color:'#353544');box(i===0?x:x+w-500,130,500,8,4,'#1a1b29');box(i===0?x:x+w-500*f.energy/100,130,500*f.energy/100,8,4,i===0?'#d8b45d':'#61cbd1');}
 box(594,48,92,55,10,'#12131fee','#ffffff20');text(String(Math.max(0,Math.ceil(timer))).padStart(2,'0'),640,76,34,'#fff','center');text('ROUND '+round,640,116,9,'#a9a7b2','center','DM Sans',700)}
 function fight(){ctx.save();let sx=rand(-shake,shake),sy=rand(-shake,shake);shake*=.82;ctx.translate(sx,sy);bg();fighters.forEach(f=>art(f.x,f.y,1,C[f.id],{facing:f.facing,pose:f.hit?'hit':f.guard?'guard':f.attack?'attack':'idle'}));for(let s of shots){ctx.fillStyle=s.c;ctx.beginPath();ctx.arc(s.x,s.y,14,0,7);ctx.fill();ctx.globalAlpha=.35;ctx.beginPath();ctx.arc(s.x-s.vx*3,s.y,24,0,7);ctx.fill();ctx.globalAlpha=1}particles.forEach(p=>text(p.text,p.x,p.y,18,p.c,'center'));vignette();hud();if(roundState==='intro'){ctx.fillStyle='#09091299';ctx.fillRect(0,0,W,H);text('ROUND '+round,640,300,64,'#fff','center');text(intro>0?'':'FIGHT',640,380,88, '#ffca68','center')}
@@ -84,8 +102,27 @@ if(roundState==='result'){box(390,230,500,220,16,'#11121feF','#ffca6877');text(w
 function draw(){ctx.clearRect(0,0,W,H);if(screen==='menu')menu();else if(screen==='select')select();else fight()}
 function loop(t){let dt=Math.min(.033,(t-(loop.last||t))/1000||0);loop.last=t;clock+=dt;physics(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
 function canvasPoint(e){let r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
-canvas.addEventListener('pointerdown',e=>{let p=canvasPoint(e),mx=p.x,my=p.y;if(screen==='menu'){modesHit(mx,my);if(mx>=105&&mx<=455&&my>=610&&my<=652){screen='select';pickSide=0}}else if(screen==='select'){for(let i=0;i<5;i++)if(mx>=115+i*218&&mx<=295+i*218&&my>=180&&my<=490){selected[pickSide]=i;notify(C[i].name+' selecionado')}if(mx>=520&&mx<=760&&my>=590&&my<=638){if(pickSide===0&&mode!=='arcade'){pickSide=1}else startFight()}}else if(screen==='fight'&&roundState==='result'&&mx>=515&&mx<=765&&my>=390&&my<=432){screen='menu'}});
-addEventListener('keydown',e=>{if(!keys[e.code])pressed[e.code]=true;keys[e.code]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.prevent.preventDefault();if(e.code==='Escape'){if(screen==='fight')paused=!paused;else if(screen==='select')screen='menu';else if(screen==='menu'){} }});
+canvas.addEventListener('pointerdown',e=>{let p=canvasPoint(e),mx=p.x,my=p.y;if(screen==='menu'){modesHit(mx,my);if(mx>=105&&mx<=455&&my>=610&&my<=652){screen='select';pickSide=0}}else if(screen==='select'){for(let i=0;i<5;i++)if(mx>=115+i*218&&mx<=295+i*218&&my>=180&&my<=490){selected[pickSide]=i;notify(C[i].name+' selecionado')}if(mx>=520&&mx<=760&&my>=590&&my<=638){if(pickSide===0&&mode!=='arcade'){pickSide=1}else{if(mode==='arcade')selected[1]=arcadeStart();startFight()}}}else if(screen==='fight'&&roundState==='result'&&mx>=515&&mx<=765&&my>=390&&my<=432){screen='menu'}});
+addEventListener('keydown',e=>{
+ if(!keys[e.code])pressed[e.code]=true;keys[e.code]=true;
+ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+ if(e.code==='Escape'){
+  if(screen==='fight'){if(roundState==='result')screen='menu';else paused=!paused}
+  else if(screen==='select')screen='menu';
+ }
+});
 addEventListener('keyup',e=>{keys[e.code]=false});
-notify('ESCOLHA SUA LUTADOR');
+
+function mobileButtons(){
+ if(screen!=='fight'||innerWidth>900)return;
+ ctx.save();ctx.globalAlpha=.82;
+ const actions=[['◀',50,620,'KeyA'],['▶',130,620,'KeyD'],['▲',90,560,'KeyW'],['S',90,620,'KeyS'],['J',1120,620,'KeyJ'],['K',1190,620,'KeyK'],['I',1190,550,'KeyI']];
+ actions.forEach(([label,x,y,code])=>{box(x-34,y-34,68,68,34,keys[code]?'#f1b85eaa':'#141522aa','#ffffff55');text(label,x,y,24,keys[code]?'#17131a':'#fff','center')});ctx.restore();
+}
+canvas.addEventListener('pointerdown',e=>{if(screen==='fight'&&innerWidth<=900){let p=canvasPoint(e);const b=[[50,620,'KeyA'],[130,620,'KeyD'],[90,560,'KeyW'],[90,620,'KeyS'],[1120,620,'KeyJ'],[1190,620,'KeyK'],[1190,550,'KeyI']];for(let [x,y,code] of b)if(Math.hypot(p.x-x,p.y-y)<75){keys[code]=true;pressed[code]=true}}});
+canvas.addEventListener('pointerup',()=>{['KeyA','KeyD','KeyW','KeyS','KeyJ','KeyK','KeyI'].forEach(k=>keys[k]=false)});
+
+const drawOriginal=draw;
+draw=function(){drawOriginal();mobileButtons()};
+notify('ESCOLHA SEU LUTADOR');
 })();
