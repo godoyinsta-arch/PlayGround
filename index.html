@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/><title>Sunnybrook Farm</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&display=swap');
+:html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#1b4d42;font-family:'Pixelify Sans',monospace;image-rendering:pixelated}
+body{display:flex;align-items:center;justify-content:center}
+#game{position:relative;width:min(100vw,1280px);height:min(100vh,720px);max-height:100vh;aspect-ratio:16/9;overflow:hidden;background:#79bd55;box-shadow:0 0 40px #102e29}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+#touch{display:none;position:absolute;inset:0;pointer-events:none}
+.pad{position:absolute;left:24px;bottom:18px;width:150px;height:150px;border-radius:50%;pointer-events:auto}
+.pad i{position:absolute;width:48px;height:48px;border:2px solid rgba(255,255,255,.25);border-radius:12px;background:rgba(30,75,55,.58);color:white;text-align:center;line-height:44px;font-size:24px;font-style:normal}
+.pad i:nth-child(1){left:51px;top:0}.pad i:nth-child(2){left:51px;bottom:0}.pad i:nth-child(3){left:0;top:51px}.pad i:nth-child(4){right:0;top:51px}
+.actions{position:absolute;right:20px;bottom:24px;width:128px;height:128px;pointer-events:auto}
+.actions b{position:absolute;display:grid;place-items:center;border:3px solid rgba(255,255,255,.35);border-radius:50%;background:rgba(30,75,55,.68);color:white;font-size:20px}
+.actions b:nth-child(1){width:72px;height:72px;right:0;bottom:0}.actions b:nth-child(2){width:54px;height:54px;left:0;top:0}
+@media(pointer:coarse),(max-width:900px){#touch{display:block}}
+</style></head>
+<body>
+<div id="game"><canvas id="c"></canvas><div id="touch"><div class="pad"><i data-k="w">▲</i><i data-k="s">▼</i><i data-k="a">◀</i><i data-k="d">▶</i></div><div class="actions"><b data-k=" ">USE</b><b data-k="1">TOOL</b></div></div></div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+const W=960,H=540;c.width=W;c.height=H;x.imageSmoothingEnabled=false;
+const T=32, keys={};
+let day=1,time=7.1,coins=120,energy=100,selected=0,toast='',toastT=0,shake=0;
+const tools=['Hoe','Seeds','Water','Axe'];
+const inv=[{n:'Parsnip',q:3},{n:'Wheat',q:0},{n:'Wood',q:0},{n:'Water',q:99}];
+const player={x:480,y:330,dx:0,dy:0,facing:'down',frame:0,step:0};
+const buildings={house:{x:245,y:100,w:190,h:145},shop:{x:645,y:116,w:170,h:125},coop:{x:70,y:260,w:130,h:100}};
+const crops=[]; let pumpkins=[];
+for(let i=0;i<7;i++)crops.push({x:390+i%4*40,y:225+Math.floor(i/4)*40,stage:0,water:false});
+for(let i=0;i<4;i++) pumpkins.push({x:340+i*48,y:385+(i%2)*18});
+const trees=[]; for(let i=0;i<12;i++){let edge=i<6;trees.push({x:edge?30+i*75:870+(i%2)*30,y:edge?60+((i*53)%75):175+(i*37)%270,stumps:false})}
+const rocks=[{x:574,y:170},{x:838,y:398},{x:205,y:430},{x:710,y:55}];
+const flowers=[{x:185,y:200},{x:210,y:210},{x:760,y:350},{x:790,y:370},{x:560,y:390},{x:530,y:410}];
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()] = true;if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))e.preventEvent;if(e.key===' ')use();if(/^\d$/.test(e.key)){selected=(+e.key-1); if(selected>=4)selected=0}});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()] = false);
+for(const el of document.querySelectorAll('[data-k]')){const k=el.dataset.k;el.addEventListener('pointerdown',e=>{e.preventDefault();if(k===' ')use();else if(k==='1')selected=(selected+1)%4;else keys[k]=true});el.addEventListener('pointerup',()=>{if(k!==' '&&k!=='1')keys[k]=false});el.addEventListener('pointercancel',()=>{if(k!==' '&&k!=='1')keys[k]=false})}
+function rect(a,b,c,d,r=0){x.fillRect(a,b,c,d)}
+function pixelText(t,px,py,size=20,color='#fff',align='left'){x.font=`700 ${size}px "Pixelify Sans",monospace`;x.textAlign=align;x.fillStyle='#402f28';x.fillText(t,px+2,py+2);x.fillStyle=color;x.fillText(t,px,py)}
+function drawTile(mx,my,c1,c2){x.fillStyle=c1;rect(mx*T,my*T,T,T);x.fillStyle=c2;for(let k=0;k<3;k++)rect(mx*T+(k*13+5)%27,my*T+(k*7+8)%27,3,2)}
+function drawWorld(){
+ // grass and borders
+ for(let my=0;my<17;my++)for(let mx=0;mx<30;mx++){let n=(mx*17+my*31)%5;drawTile(mx,my,n===0?'#73b94f':'#78b951',n===0?'#65aa48':'#86c85c')}
+ // paths
+ x.fillStyle='#c79c62';rect(0,340,960,58);rect(450,0,60,540);rect(110,300,260,42);rect(620,300,340,42);
+ x.fillStyle='#b98955';for(let i=0;i<30;i++){rect(i*35+((i%3)*7),347+(i%4)*11,18,4)}
+ // fences
+ x.fillStyle='#b77b45';for(let i=0;i<12;i++){rect(348+i*31,205,28,5);rect(348+i*31,232,28,5);rect(355+i*31,202,5,30)}
+ // farm soil
+ x.fillStyle='#97764c';rect(380,215,170,90);
+ x.fillStyle='#80603c';for(let i=0;i<5;i++){rect(388+i*38,220,4,78)}
+ x.fillStyle='#a98a59';for(let i=0;i<5;i++){rect(380+i*40,214,34,8)}
+ // houses
+ drawHouse(buildings.house.x,buildings.house.y,190,145,'#dfd5b6','#9e5a42','#6b3b31','C');
+ drawShop(buildings.shop.x,buildings.shop.y,170,125);
+ drawCoop(buildings.coop.x,buildings.coop.y,130,100);
+ // well
+ x.fillStyle='#6c7d71';rect(560,255,58,42,8);x.fillStyle='#9eae94';rect(566,261,46,28);x.fillStyle='#5c5148';rect(573,268,32,21);x.fillStyle='#b58c55';rect(550,248,78,9);rect(558,218,8,36);rect(612,218,8,36);x.fillStyle='#d0aa65';rect(554,215,66,7);
+ // crops, pumpkins
+ for(const c of crops)drawCrop(c);
+ for(const p of pumpkins)drawPumpkin(p.x,p.y);
+ // pond
+ x.fillStyle='#5d9d92';rect(55,355,220,78);x.fillStyle='#79b49a';for(let i=0;i<5;i++)rect(75+i*38,365+(i%2)*25,26,5);
+ // trees/rocks/flowers
+ for(const t of trees)drawTree(t.x,t.y,t.stumps);
+ for(const r of rocks)drawRock(r.x,r.y);
+ for(const f of flowers)drawFlower(f.x,f.y);
+ // NPC
+ drawNPC(690,320,'#c97a68','#4d7047','#f2d3a2');
+ drawNPC(590,145,'#ddaa52','#74508a','#d9a56f');
+}
+function drawHouse(px,py,w,h,wall,roof,trim,sign){
+ x.fillStyle='#4b7d49';rect(px-18,py+25,w+36,15);x.fillStyle=trim;rect(px+8,py+64,w-16,h-54);
+ x.fillStyle=wall;rect(px+18,py+72,w-36,h-62);x.fillStyle='#c7dfd1';for(let i=0;i<5;i++)rect(px+28+i*34,py+82,22,24);
+ x.fillStyle=roof;rect(px-10,py+28,w+20,42);x.fillStyle='#79513e';for(let i=0;i<8;i++)rect(px+i*25-6,py+31,20,4);
+ x.fillStyle='#5e8b55';rect(px+5,py+57,w-10,10);x.fillStyle='#6b4435';rect(px+78,py+104,38,41);
+ x.fillStyle='#d6b77b';rect(px+95,py+88,8,20);x.fillStyle='#6b4435';rect(px+91,py+88,16,7);
+}
+function drawShop(px,py,w,h){drawHouse(px,py,w,h,'#f2dfb1','#798c55','#6b6740','');x.fillStyle='#4d3b31';rect(px+22,py+48,126,14);x.fillStyle='#f1b95c';rect(px+35,py+78,100,38);x.fillStyle='#9a6c3d';rect(px+30,py+72,110,8);x.fillStyle='#fff1ca';rect(px+46,py+86,78,12)}
+function drawCoop(px,py,w,h){x.fillStyle='#8c5a43';rect(px+16,py+28,w-32,h-20);x.fillStyle='#d8c487';rect(px+25,py+38,w-50,h-30);x.fillStyle='#b85b48';x.beginPath();x.moveTo(px-4,py+32);x.lineTo(px+w/2,py);x.lineTo(px+w+4,py+32);x.closePath();x.fill();x.fillStyle='#75483b';rect(px+47,py+58,38,22)}
+function drawTree(px,py,stump){if(stump){x.fillStyle='#795738';rect(px+9,py+13,16,14);return}x.fillStyle='#59472f';rect(px+13,py+23,10,30);x.fillStyle='#4f8b43';rect(px-4,py-2,44,43);x.fillStyle='#67a64e';rect(px+7,py-12,24,22);x.fillStyle='#79b95a';rect(px+3,py+2,9,8);rect(px+24,py+9,7,8)}
+function drawRock(px,py){x.fillStyle='#77817b';rect(px-14,py-8,28,20);x.fillStyle='#a1aaa1';rect(px-10,py-12,18,10)}
+function drawFlower(px,py){x.fillStyle='#3d7a43';rect(px-2,py,4,9);x.fillStyle='#f1b6bc';rect(px-7,py-7,7,7);rect(px+1,py-7,7,7);rect(px-3,py-11,7,7)}
+function drawPumpkin(px,py){x.fillStyle='#44843d';rect(px-3,py-8,6,10);x.fillStyle='#d87d2f';rect(px-11,py-2,22,15);x.fillStyle='#ef9b44';rect(px-6,py+1,12,10)}
+function drawCrop(c){if(c.stage===0){x.fillStyle=c.water?'#80603c':'#97764c';rect(c.x,c.y,32,32);return}x.fillStyle=c.water?'#4e8d45':'#678d3e';if(c.stage===1){rect(c.x+14,c.y+12,4,14);rect(c.x+8,c.y+10,7,5);rect(c.x+18,c.y+7,7,5)}else if(c.stage===2){x.fillStyle='#4f8d43';rect(c.x+10,c.y+3,12,22);x.fillStyle='#98bd3d';rect(c.x+5,c.y+8,8,8);rect(c.x+20,c.y+12,8,8)}else{x.fillStyle='#78ad48';rect(c.x+8,c.y+2,16,24);x.fillStyle='#d8d4b1';rect(c.x+4,c.y+8,24,7);rect(c.x+9,c.y+17,14,7);rect(c.x+1,c.y+13,8,7);rect(c.x+23,c.y+17,8,7)}}
+function drawNPC(px,py,hair,shirt,skin){x.fillStyle='#503e30';rect(px-12,py+20,24,10);x.fillStyle=skin;rect(px-9,py-7,18,17);x.fillStyle=hair;rect(px-11,py-13,22,7);rect(px-11,py-8,5,10);x.fillStyle=shirt;rect(px-10,py+10,20,22);x.fillStyle='#263e4b';rect(px-7,py+30,7,10);rect(px+1,py+30,7,10)}
+function drawPlayer(){let px=Math.round(player.x),py=Math.round(player.y);let walking=(keys.w||keys.a||keys.s||keys.d);let bob=walking&&Math.floor(player.step/8)%2?1:0;
+ x.fillStyle='rgba(38,83,52,.28)';x.beginPath();x.ellipse(px,py+20,12,5,0,0,7);x.fill();
+ x.fillStyle='#50372e';rect(px-10,py+16-bob,7,15);rect(px+3,py+16-bob,7,15);
+ x.fillStyle='#4d7b45';rect(px-12,py+bob,24,22);x.fillStyle='#d5aa78';rect(px-8,py-14-bob,16,16);x.fillStyle='#6d4432';rect(px-10,py-18-bob,20,8);rect(px-10,py-13-bob,5,10);
+ x.fillStyle='#263e4b';rect(px-7,py+35-bob,7,7);rect(px+2,py+35-bob,7,7);
+ if(tools[selected]==='Hoe'||tools[selected]==='Axe'||tools[selected]==='Water'){x.fillStyle=tools[selected]==='Water'?'#9ab5cf':'#6e5a43';rect(px+(player.facing==='left'?-18:13),py+8,4,20);x.fillStyle='#b6b39d';if(toinspector()){} }
+}
+function ifnone(){}
+function toinspector(){return false}
+function drawHUD(){
+ // top translucent bar
+ x.fillStyle='rgba(54,94,63,.82)';rect(18,14,236,46,14);x.fillStyle='#4a382e';rect(18,14,236,46);x.fillStyle='#f5df9c';pixelText('☀  SPRING '+day,34,42,20,'#f6e58a');pixelText(timeToClock(),180,42,20,'#fff', 'right');
+ // bottom inventory
+ x.fillStyle='rgba(47,72,53,.85)';rect(270,484,420,48);for(let i=0;i<8;i++){x.fillStyle=i===selected?'#e0c47c':'#9a8057';rect(278+i*50,492,44,32);x.strokeStyle='#5e4c38';x.lineWidth=2;x.strokeRect(278+i*50,492,44,32)}
+ for(let i=0;i<tools.length;i++){drawItem(i,286+i*50,496)}
+ pixelText(coins+'g',918,40,24,'#ffe28a','right');x.fillStyle='#4d402f';rect(840,56,96,13);x.fillStyle='#70bd68';rect(842,58,92*(energy/100),9);
+ pixelText('Energy',842,82,15,'#f4d9b0','right');
+ if(toastT>0){x.fillStyle='rgba(55,45,38,.9)';rect(315,100,330,38);pixelText(toast,480,126,20,'#fff4c9','center')}
+}
+function drawItem(i,px,py){x.fillStyle='#5b4a38';pixelText(String(i+1),px-2,py+7,11,'#fff');if(i===0){x.fillStyle='#8b6542';rect(px+20,py+14,18,4)}if(i===1){x.fillStyle='#d9c68c';rect(px+21,py+10,14,15);x.fillStyle='#73a64c';rect(px+24,py+8,8,5)}if(i===2){x.fillStyle='#d4d7cf';rect(px+20,py+10,16,17);x.fillStyle='#84b8ca';rect(px+23,py+14,10,10)}if(i===3){x.fillStyle='#6d5038';rect(px+20,py+10,5,18);x.fillStyle='#aab0a3';rect(px+17,py+8,10,5)}}
+function timeToClock(){let h=Math.floor(time),m=Math.floor((time-h)*60);return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' AM'}
+function showToast(s){toast=s;toastT=120}
+function use(){
+ let tx=player.x,ty=player.y+18;
+ if(tools[selected]==='Seeds'){for(const c of crops){if(Math.abs(c.x-tx)<24&&Math.abs(c.y-ty)<24&&c.stage===0){c.stage=1;c.water=false;showToast('Seeds planted');energy-=2;return}}showToast('Plant in the soil')}
+ if(tools[selected]==='Water'){for(const c of crops){if(Math.abs(c.x-tx)<28&&Math.abs(c.y-ty)<28&&c.stage>0){c.water=true;showToast('Crop watered');energy-=1;return}}}
+ if(tools[selected]==='Hoe'){for(let i=crops.length-1;i>=0;i--){let c=crops[i];if(Math.abs(c.x-tx)<25&&Math.abs(c.y-ty)<25&&c.stage>0){if(c.stage>=3){coins+=18;c.stage=0;c.water=false;showToast('Parsnip sold for 18g');energy-=2}else showToast('Needs more time')}}}
+ if(tools[selected]==='Axe'){for(let i=trees.length-1;i>=0;i--){let t=trees[i];if(Math.abs(t.x-tx)<30&&Math.abs(t.y-ty)<35&&!t.stumps){t.stumps=true;inv[2].q++;coins+=2;showToast('Wood collected');energy-=3;return}}}
+}
+let last=performance.now();function loop(now){let dt=Math.min(32,now-last);last=now;
+ let sp=0.16*dt,dx=(keys.d?1:0)-(keys.a?1:0),dy=(keys.s?1:0)-(keys.w?1:0);if(dx&&dy){dx*=.707;dy*=.707}
+ if(dx||dy){player.dx=dx;player.dy=dy;if(dx<0)player.facing='left';if(dx>0)player.facing='right';if(dy<0)player.facing='up';if(dy>0)player.facing='down';player.step+=dt}
+ player.x=Math.max(20,Math.min(940,player.x+dx*sp));player.y=Math.max(42,Math.min(500,player.y+dy*sp));
+ time+=dt*.00018;if(time>=24){time=7;day++;for(const c of crops)if(c.stage>0&&c.stage<3&&c.water)c.stage++;for(const c of crops)c.water=false;energy=100;showToast('Good morning!')}
+ if(toastT>0)toastT-=dt/16.67;
+ x.clearRect(0,0,W,H);drawWorld();drawPlayer();drawHUD();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+</script>
+</body>
+</html>
