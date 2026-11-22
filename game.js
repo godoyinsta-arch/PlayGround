@@ -70,7 +70,7 @@ function damage(a,d,amount,force=0){let b=fighters[1-d],blocked=b.guard&&b.facin
 function spawnHit(x,y,n,c){particles.push({x,y,vx:rand(-2,2),vy:rand(-4,-1),life:18,text:n+'!',c})}
 function shotsCollision(){for(let s of shots){let owner=s.owner,target=1-owner,f=fighters[target];if(Math.abs(s.x-f.x)<48&&f.y>500){damage(fighters[owner],target,s.dmg,s.force);s.life=0}}shots=shots.filter(s=>s.life>0)}
 function physics(dt){if(paused||roundState==='over'||roundState==='result')return;
- if(roundState==='intro'){intro-=dt;if(intro<=0){roundState='fight';notify('FIGHT')}}if(roundState==='fight')timer-=dt*.025;
+ if(roundState==='intro'){intro-=dt;if(intro<=0){roundState='fight';notify('FIGHT')}}if(roundState==='fight')timer=clamp(timer-dt*.025,0,99);
  fighters.forEach((f,i)=>{f.facing=fighters[1-i].x<f.x?-1:1;if(f.attack>0)f.attack--;if(f.hit>0)f.hit--;f.guard=false;
   if(i===0){let left=keys.KeyA,right=keys.KeyD,guard=keys.KeyS; if(left){f.vx=-5}else if(right){f.vx=5}else f.vx*=.72;if(keys.KeyW&&f.y>=G-1)f.vy=-11;f.guard=guard&&!f.attack;if(pressed.KeyJ)attack(f,i,'light');if(pressed.KeyK)attack(f,i,'special');if(pressed.KeyI)attack(f,i,'ult');}
   else if(mode==='versus'){let left=keys.ArrowLeft,right=keys.ArrowRight,guard=keys.ArrowDown;if(left)f.vx=-5;else if(right)f.vx=5;else f.vx*=.72;if(keys.ArrowUp&&f.y>=G-1)f.vy=-11;f.guard=guard&&!f.attack;if(pressed.Digit1)attack(f,i,'light');if(pressed.Digit2)attack(f,i,'special');if(pressed.Digit3)attack(f,i,'ult')}
@@ -86,6 +86,7 @@ function spawnShot(f,i,type){shots.push({x:f.x+f.facing*55,y:f.y-62,vx:f.facing*
 function finish(){
  if(roundState==='over'||roundState==='result')return;
  let a=fighters[0].hp,b=fighters[1].hp,w=a>b?0:(b>a?1:-1);
+ if(a===b)w=-1;
  if(w>=0)wins[w]++;winner=w;roundState='over';
  setTimeout(()=>{
   if(mode==='arcade'&&w===0&&arcade.length){let id=arcade.shift();selected[1]=id;fighters[1]=makeFighter(id,1030,1);round++;startRound();notify('NOVO DESAFIO: '+C[id].name)}
